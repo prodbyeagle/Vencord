@@ -1,10 +1,20 @@
-/*
- * EagleCord, a Vencord mod
+/*!
+ * Vencord, a modification for Discord's desktop app
+ * Copyright (c) 2022 Vendicated and contributors
  *
- * Vencord, a Discord client mod
- * Copyright (c) 2025 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
- */
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
 // DO NOT REMOVE UNLESS YOU WISH TO FACE THE WRATH OF THE CIRCULAR DEPENDENCY DEMON!!!!!!!
 import "~plugins";
@@ -16,25 +26,24 @@ export * as Util from "./utils";
 export * as Updater from "./utils/updater";
 export * as Webpack from "./webpack";
 export * as WebpackPatcher from "./webpack/patchWebpack";
-export { PlainSettings, Settings } from "@api/Settings";
+export { PlainSettings, Settings };
 
-import { get as dsGet } from "@api/DataStore";
-import { type NotificationData, showNotification } from "@api/Notifications";
-import { initPluginManager, PMLogger, startAllPlugins } from "@api/PluginManager";
-import { Settings, SettingsStore } from "@api/Settings";
-import { getCloudSettings, putCloudSettings, shouldCloudSync } from "@api/SettingsSync/cloudSync";
 import { coreStyleRootNode, initStyles } from "@api/Styles";
 import { openSettingsTabModal, UpdaterTab } from "@components/settings";
 import { debounce } from "@shared/debounce";
 import { IS_WINDOWS } from "@utils/constants";
 import { createAndAppendStyle } from "@utils/css";
-import { localStorage } from "@utils/localStorage";
-import { relaunch } from "@utils/native";
 import { StartAt } from "@utils/types";
-import { checkForUpdates, update, UpdateLogger } from "@utils/updater";
-import { onceReady } from "@webpack";
 import { SettingsRouter } from "@webpack/common";
 
+import { get as dsGet } from "./api/DataStore";
+import { NotificationData, showNotification } from "./api/Notifications";
+import { initPluginManager, PMLogger, startAllPlugins } from "./api/PluginManager";
+import { PlainSettings, Settings, SettingsStore } from "./api/Settings";
+import { areLocalSettingsDirty, getCloudSettings, getCloudSyncDirection, markLocalSettingsDirty, putCloudSettings, shouldCloudSync } from "./api/SettingsSync/cloudSync";
+import { relaunch } from "./utils/native";
+import { checkForUpdates, update, UpdateLogger } from "./utils/updater";
+import { onceReady } from "./webpack";
 import { patches } from "./webpack/patchWebpack";
 
 if (IS_REPORTER) {
@@ -42,24 +51,18 @@ if (IS_REPORTER) {
 }
 
 async function syncSettings() {
-    if (localStorage.Vencord_cloudSyncDirection === undefined) {
-        // by default, sync bi-directionally
-        localStorage.Vencord_cloudSyncDirection = "both";
-    }
-
     // pre-check for local shared settings
     if (
         Settings.cloud.authenticated &&
-        !(await dsGet("Vencord_cloudSecret")) // enabled due to local settings share or some other bug
+        !await dsGet("Vencord_cloudSecret") // this has been enabled due to local settings share or some other bug
     ) {
         // show a notification letting them know and tell them how to fix it
-        await showNotification({
+        showNotification({
             title: "Cloud Integrations",
-            body:
-                "We've noticed you have cloud integrations enabled in another client! Due to limitations, you will " +
+            body: "We've noticed you have cloud integrations enabled in another client! Due to limitations, you will " +
                 "need to re-authenticate to continue using them. Click here to go to the settings page to do so!",
             color: "var(--yellow-360)",
-            onClick: () => SettingsRouter.openUserSettings("vencord_cloud_panel"),
+            onClick: () => SettingsRouter.openUserSettings("vencord_cloud_panel")
         });
         return;
     }
@@ -67,17 +70,20 @@ async function syncSettings() {
     if (
         Settings.cloud.settingsSync && // if it's enabled
         Settings.cloud.authenticated && // if cloud integrations are enabled
-        localStorage.Vencord_cloudSyncDirection !== "manual" // if we're not in manual mode
+        getCloudSyncDirection() !== "manual" // if we're not in manual mode
     ) {
-        if (localStorage.Vencord_settingsDirty && shouldCloudSync("push")) {
+        if (areLocalSettingsDirty() && shouldCloudSync("push")) {
             await putCloudSettings();
-        } else if (shouldCloudSync("pull") && (await getCloudSettings(false))) {
-            // false means no sync (see getCloudSettings docs)
-            await showNotification({
+        } else if (shouldCloudSync("pull") && await getCloudSettings(false)) { // if we synchronized something (false means no sync)
+            // we show a notification here instead of allowing getCloudSettings() to show one to declutter the amount of
+            // potential notifications that might occur. getCloudSettings() will always send a notification regardless if
+            // there was an error to notify the user, but besides that we only want to show one notification instead of all
+            // of the possible ones it has (such as when your settings are newer).
+            showNotification({
                 title: "Cloud Settings",
                 body: "Your settings have been updated! Click here to restart to fully apply changes!",
                 color: "var(--green-360)",
-                onClick: relaunch,
+                onClick: relaunch
             });
         }
     }
@@ -89,7 +95,7 @@ async function syncSettings() {
     }, 60_000);
 
     SettingsStore.addGlobalChangeListener(() => {
-        localStorage.Vencord_settingsDirty = true;
+        markLocalSettingsDirty();
         saveSettingsOnFrequentAction();
     });
 }
@@ -103,15 +109,11 @@ async function runUpdateCheck() {
         if (notifiedForUpdatesThisSession) return;
         notifiedForUpdatesThisSession = true;
 
-        setTimeout(
-            () =>
-                showNotification({
-                    permanent: true,
-                    noPersist: true,
-                    ...data,
-                }),
-            10_000
-        );
+        setTimeout(() => showNotification({
+            permanent: true,
+            noPersist: true,
+            ...data
+        }), 10_000);
     };
 
     try {
@@ -124,7 +126,7 @@ async function runUpdateCheck() {
                 notify({
                     title: "Vencord has been updated!",
                     body: "Click here to restart",
-                    onClick: relaunch,
+                    onClick: relaunch
                 });
             }
             return;
@@ -133,7 +135,7 @@ async function runUpdateCheck() {
         notify({
             title: "A Vencord update is available!",
             body: "Click here to view the update",
-            onClick: () => openSettingsTabModal(UpdaterTab!),
+            onClick: () => openSettingsTabModal(UpdaterTab!)
         });
     } catch (err) {
         UpdateLogger.error("Failed to check for updates", err);
@@ -144,10 +146,10 @@ async function init() {
     await onceReady;
     startAllPlugins(StartAt.WebpackReady);
 
-    await syncSettings();
+    syncSettings();
 
     if (!IS_WEB && !IS_UPDATER_DISABLED) {
-        await runUpdateCheck();
+        runUpdateCheck();
 
         // this tends to get really annoying, so only do this if the user has auto-update without notification enabled
         if (Settings.autoUpdate && !Settings.autoUpdateNotification) {
@@ -174,16 +176,11 @@ initStyles();
 startAllPlugins(StartAt.Init);
 init();
 
-document.addEventListener(
-    "DOMContentLoaded",
-    () => {
-        startAllPlugins(StartAt.DOMContentLoaded);
+document.addEventListener("DOMContentLoaded", () => {
+    startAllPlugins(StartAt.DOMContentLoaded);
 
-        // FIXME
-        if (IS_DISCORD_DESKTOP && Settings.winNativeTitleBar && IS_WINDOWS) {
-            createAndAppendStyle("vencord-native-titlebar-style", coreStyleRootNode).textContent =
-                "[class*=titleBar]{display: none!important}";
-        }
-    },
-    { once: true }
-);
+    // FIXME
+    if (IS_DISCORD_DESKTOP && Settings.winNativeTitleBar && IS_WINDOWS) {
+        createAndAppendStyle("vencord-native-titlebar-style", coreStyleRootNode).textContent = "[class*=titleBar]{display: none!important}";
+    }
+}, { once: true });

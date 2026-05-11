@@ -26,7 +26,7 @@ export default definePlugin({
             find: ".tabBarRef",
             replacement: {
                 match: /style:this\.getStyle\(\),role:"tab"/,
-                replace: "$&,'data-tab-id':this.props.id"
+                replace: "$&,'data-tab-id':this?.props?.id"
             }
         },
 
@@ -61,7 +61,7 @@ export default definePlugin({
     ],
 
     getAvatarStyles(src: string | null) {
-        if (!src || src.startsWith("data:")) return {};
+        if (typeof src !== "string" || src.startsWith("data:")) return {};
 
         return Object.fromEntries(
             [128, 256, 512, 1024, 2048, 4096].map(size => [

@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { Settings } from "@api/Settings";
+import { definePluginSettings } from "@api/Settings";
 import { disableStyle, enableStyle } from "@api/Styles";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { Devs } from "@utils/constants";
@@ -14,6 +14,25 @@ import definePlugin, { OptionType } from "@utils/types";
 
 import hoverOnlyStyle from "./hoverOnly.css?managed";
 import { Player } from "./PlayerComponent";
+
+export const settings = definePluginSettings({
+    hoverControls: {
+        description: "Show controls on hover",
+        type: OptionType.BOOLEAN,
+        default: false,
+        onChange: v => toggleHoverControls(v)
+    },
+    useSpotifyUris: {
+        type: OptionType.BOOLEAN,
+        description: "Open Spotify URIs instead of Spotify URLs. Will only work if you have Spotify installed and might not work on all platforms",
+        default: false
+    },
+    previousButtonRestartsTrack: {
+        type: OptionType.BOOLEAN,
+        description: "Restart currently playing track when pressing the previous button if playtime is >3s",
+        default: true
+    }
+});
 
 function toggleHoverControls(value: boolean) {
     (value ? enableStyle : disableStyle)(hoverOnlyStyle);
@@ -24,24 +43,7 @@ export default definePlugin({
     description: "Adds a Spotify player above the account panel",
     tags: ["Media", "Activity"],
     authors: [Devs.Ven, Devs.afn, Devs.KraXen72, Devs.Av32000, Devs.nin0dev],
-    options: {
-        hoverControls: {
-            description: "Show controls on hover",
-            type: OptionType.BOOLEAN,
-            default: false,
-            onChange: v => toggleHoverControls(v)
-        },
-        useSpotifyUris: {
-            type: OptionType.BOOLEAN,
-            description: "Open Spotify URIs instead of Spotify URLs. Will only work if you have Spotify installed and might not work on all platforms",
-            default: false
-        },
-        previousButtonRestartsTrack: {
-            type: OptionType.BOOLEAN,
-            description: "Restart currently playing track when pressing the previous button if playtime is >3s",
-            default: true
-        }
-    },
+    settings,
     patches: [
         {
             find: ".DISPLAY_NAME_STYLES_COACHMARK)",
@@ -82,7 +84,7 @@ export default definePlugin({
         },
     ],
 
-    start: () => toggleHoverControls(Settings.plugins.SpotifyControls.hoverControls),
+    start: () => toggleHoverControls(settings.store.hoverControls),
 
     PanelWrapper({ VencordOriginal, ...props }) {
         return (
